@@ -1,0 +1,10 @@
+{
+  "screen_space_health_bar":
+  {
+    "misc":
+    {
+      "shape": "rounded_rectangle",
+      "shape_corner_radius": "7"
+    }
+  }
+}
