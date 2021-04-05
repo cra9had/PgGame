@@ -15,6 +15,7 @@ class Shop:
         self.items = {
             'moon': {"cost": 5000,
                      "image": "moon_image",
+                     "on": False,
                      "bought": False}
         }
 

@@ -9,6 +9,10 @@ class Meteor(pg.sprite.Sprite):
         self.image = pg.transform.scale(self.image, size)
         self.rect = pg.Rect((pos[0], pos[1], size[0], size[1]))
         self.angle = math.degrees(math.atan2(target_pos[1] - self.rect.center[1], target_pos[0] - self.rect.center[0]))
+        loc = self.rect.center
+        self.image = pg.transform.rotate(self.image, self.angle)
+        self.rect = self.image.get_rect()
+        self.rect.center = loc
         self.angle = math.radians(self.angle)
         self.speed = speed
         self.mask = pg.mask.from_surface(self.image)

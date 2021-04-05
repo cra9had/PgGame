@@ -17,6 +17,7 @@ class Game:
     WIDTH, HEIGHT = 1000, 750
     FPS = 60
     SPAWNAMETEOR = pg.USEREVENT + 1
+    TIMER = pg.USEREVENT + 2
 
     def __init__(self):
         pg.init()
@@ -24,7 +25,7 @@ class Game:
         self.sc = pg.display.set_mode((self.WIDTH, self.HEIGHT))
         self.manager = pygame_gui.UIManager((self.WIDTH, self.HEIGHT), "theme.json")
         self.clock = pg.time.Clock()
-        self.player = Player([self.WIDTH // 2 - 75, self.HEIGHT // 2 - 75], [150, 150])
+        self.player = Player([self.WIDTH // 2 - 100, self.HEIGHT // 2 - 100], [200, 200])
         self.meteors = pg.sprite.Group()
         self.money_for_meteor = range(1, 4)
         self.sun = Sun([50, 50], [self.WIDTH // 2 - 25, self.HEIGHT // 2 - 25])
@@ -40,6 +41,7 @@ class Game:
         self.shop_sys.items = self.get_shop_sys_items()
 
         self.bg = pg.image.load("sprites/bg.jpeg").convert_alpha()
+        self.game_over_image = pg.image.load("sprites/game_over.png").convert_alpha()
 
         self.health_bar = pygame_gui.elements.UIScreenSpaceHealthBar(relative_rect=pg.Rect(self.WIDTH - 200,
                                                                                            self.HEIGHT - 20,
@@ -49,11 +51,15 @@ class Game:
 
         self.tab_is_pressed = False
         self.pause = False
+        self.game_over = False
         self.spawn_meteor_time = 1000
-        pg.time.set_timer(self.SPAWNAMETEOR, self.spawn_meteor_time)  # 3 sec
+        self.timer = 0
+        pg.time.set_timer(self.SPAWNAMETEOR, self.spawn_meteor_time)  # 1 sec
+        pg.time.set_timer(self.TIMER, 1000)  # 1 sec
         self.spawned_meteor = 0
         self.money = self.get_money()
         self.money_text = self.font_arial.render(f"{self.money}$", False, (255, 255, 255))
+        self.timer_text = self.font_arial.render("00:00", False, (255, 255, 255))
 
     def get_shop_sys_items(self):
         try:
@@ -62,7 +68,8 @@ class Game:
             return eval(EnumValue(aKey, 0)[1])
         except (FileNotFoundError, OSError):
             CreateKey(HKEY_CURRENT_USER, r'Software\\SaveTheEarth')
-            self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'items', REG_SZ, f"{self.shop_sys.items}")
+            self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'items', REG_SZ,
+                                  f"{self.shop_sys.items}")
             return self.shop_sys.items
 
     def get_money(self):
@@ -100,26 +107,38 @@ class Game:
         kwarg_dict = {"texture": pg.image.load("sprites/fuzzball.png").convert_alpha(),
                       "angle": (math.pi / 3, 2 * math.pi / 3),
                       "speed": (0.1, 0.5),
-                      "size": (15, 15),
-                      "life_span": 0.7,
-                      "start_color": (255, 90, 15)}
+                      "size": (15, 20),
+                      "life_span": 1.0,
+                      "start_color": (255, 50, 15)}
         return Emitter([self.WIDTH // 2, self.HEIGHT // 2], 150, **kwarg_dict)
+
+    def restart_game(self):
+        self.player.current_health = self.player.health_capacity
+        self.player.current_image = self.player.images[0]
+        self.timer = 0
+        self.particles = []
+        self.meteors = pg.sprite.Group()
 
     def draw_scene(self):
         # pg.draw.circle(self.sc, (0, 255, 0), [self.player.rect.x, self.player.rect.y], self.player.rect[3])
         self.sc.blit(self.bg, (0, 0))
+        if self.game_over:
+            size = self.game_over_image.get_size()
+            self.sc.blit(self.game_over_image, ((self.WIDTH // 2) - (size[0] // 2), (self.HEIGHT // 2) - (size[1] // 2)))
+            return
         self.sc.blit(self.player.view_image, [self.player.rect.x, self.player.rect.y])
         pg.draw.rect(self.sc, (255, 0, 0), [self.player.rect.x, self.player.rect.y,
                                             self.player.rect[2], self.player.rect[3]], 2)
         self.draw_meteors()
 
-        if self.shop_sys.items['moon']['bought']:
+        if self.shop_sys.items['moon']['bought'] and self.shop_sys.items['moon']['on']:
             self.sc.blit(self.moon.image, [self.moon.rect.x, self.moon.rect.y])
 
         self.sc.blit(self.sun.image, self.sun.rect)
 
         self.draw_particles()
         self.sc.blit(self.money_text, (0, 0))
+        self.sc.blit(self.timer_text, (self.WIDTH - 36 * 5, 0))
         self.sc.blit(self.shop_btn.image, [self.shop_btn.rect.x, self.shop_btn.rect.y])
 
         # pg.draw.circle(self.sc, (0, 255, 0), self.moon.pos, 5)
@@ -137,7 +156,7 @@ class Game:
     def draw_meteors(self):
         for meteor in self.meteors:
             self.sc.blit(meteor.image, [meteor.rect.x, meteor.rect.y])
-            pg.draw.rect(self.sc, (255, 0, 0), meteor.rect, 1)
+            # pg.draw.rect(self.sc, (255, 0, 0), meteor.rect, 1)
 
     def check_collides(self):
         for meteor in self.meteors:
@@ -145,6 +164,8 @@ class Game:
             if collide:
                 self.meteors.remove(meteor)
                 self.player.current_health -= 1
+                if self.player.current_health == 0:
+                    self.game_over = True
                 for i in range(10):
                     self.particles.append([list(meteor.rect.center), [random.randint(0, 40) / 10 - 1, -2],
                                            random.randint(4, 6)])
@@ -157,20 +178,25 @@ class Game:
                                            random.randint(4, 6)])
                 self.money += random.choice(self.money_for_meteor)
                 continue
-            collide = pg.sprite.collide_mask(meteor, self.moon)
-            if collide:
-                self.meteors.remove(meteor)
-                for i in range(10):
-                    self.particles.append([list(meteor.rect.center), [random.randint(0, 40) / 10 - 1, -2],
-                                           random.randint(4, 6)])
-                self.money += random.choice(self.money_for_meteor)
-                continue
+            if self.shop_sys.items['moon']['bought'] and self.shop_sys.items['moon']['on']:
+                collide = pg.sprite.collide_mask(meteor, self.moon)
+                if collide:
+                    self.meteors.remove(meteor)
+                    for i in range(10):
+                        self.particles.append([list(meteor.rect.center), [random.randint(0, 40) / 10 - 1, -2],
+                                               random.randint(4, 6)])
+                    self.money += random.choice(self.money_for_meteor)
+                    continue
 
     def process(self):
         self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'money', REG_SZ, f"{self.money}")
         self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'items', REG_SZ, f"{self.shop_sys.items}")
+        minute = str(self.timer // 60).zfill(2)
+        seconds = str(self.timer % 60).zfill(2)
+        self.timer_text = self.font_arial.render(f"{minute}:{seconds}", False, (255, 255, 255))
         self.money_text = self.font_arial.render(f"{self.money}$", False, (255, 255, 255))
         self.player.rotate()
+        self.player.process()
         self.sun.move()
         pos = list(pg.mouse.get_pos())
         pos[1] += self.sun.rect.height
@@ -179,13 +205,13 @@ class Game:
         self.fire_particle.update(self.sc, self.ticks)
         for meteor in self.meteors:
             meteor.move()
-            if meteor.rect.x - 50 > self.WIDTH:
+            if meteor.rect.x - 150 > self.WIDTH:
                 self.meteors.remove(meteor)
-            elif meteor.rect.x + 50 < 0:
+            elif meteor.rect.x + 150 < 0:
                 self.meteors.remove(meteor)
-            elif meteor.rect.y - 50 > self.WIDTH:
+            elif meteor.rect.y - 150 > self.WIDTH:
                 self.meteors.remove(meteor)
-            elif meteor.rect.y + 50 < 0:
+            elif meteor.rect.y + 150 < 0:
                 self.meteors.remove(meteor)
 
         for particle in self.particles:
@@ -196,7 +222,7 @@ class Game:
             if particle[2] <= 0:
                 self.particles.remove(particle)
 
-        if self.shop_sys.items['moon']['bought']:
+        if self.shop_sys.items['moon']['bought'] and self.shop_sys.items['moon']['on']:
             self.moon.rotate()
 
         self.check_collides()
@@ -210,13 +236,17 @@ class Game:
 
                 elif event.type == pg.KEYDOWN:
                     if event.key == pg.K_SPACE:
-                        self.pause = not self.pause
-                        if not self.pause:
-                            pg.mouse.set_pos([self.sun.rect.x + self.sun.rect.width // 2,
-                                              self.sun.rect.y + self.sun.rect.height // 2])
-                            pg.mouse.set_visible(False)
+                        if not self.game_over:
+                            self.pause = not self.pause
+                            if not self.pause:
+                                pg.mouse.set_pos([self.sun.rect.x + self.sun.rect.width // 2,
+                                                  self.sun.rect.y + self.sun.rect.height // 2])
+                                pg.mouse.set_visible(False)
+                            else:
+                                pg.mouse.set_visible(True)
                         else:
-                            pg.mouse.set_visible(True)
+                            self.game_over = False
+                            self.restart_game()
 
                 elif event.type == pg.KEYUP:
                     if event.key == pg.K_TAB:
@@ -229,7 +259,10 @@ class Game:
                     if event.button == 1 and self.tab_is_pressed:
                         self.shop()
 
-                elif event.type == self.SPAWNAMETEOR and not self.pause and not self.tab_is_pressed:
+                elif event.type == self.TIMER and not self.pause and not self.tab_is_pressed and not self.game_over:
+                    self.timer += 1
+
+                elif event.type == self.SPAWNAMETEOR and not self.pause and not self.tab_is_pressed and not self.game_over:
                     self.spawned_meteor += 1
                     if self.spawned_meteor % 10 == 0:
                         if self.spawn_meteor_time > 350:
@@ -238,8 +271,9 @@ class Game:
                             self.money_for_meteor = range(self.money_for_meteor[0] + 1,
                                                           self.money_for_meteor[len(self.money_for_meteor) - 1] + 2)
 
-                    pos = self.get_random_pos()
-                    self.meteors.add(Meteor(pos, [60, 60], 5, self.player.rect.center))
+                    for i in range(random.randint(1, 3)):
+                        pos = self.get_random_pos()
+                        self.meteors.add(Meteor(pos, [106, 80], 5, self.player.rect.center))
 
                 self.manager.process_events(event)
 
@@ -254,7 +288,7 @@ class Game:
             self.draw_scene()
             self.manager.draw_ui(self.sc)
 
-            if not self.tab_is_pressed and not self.pause:
+            if not self.tab_is_pressed and not self.pause and not self.game_over:
                 self.process()
 
             pg.display.flip()
@@ -265,7 +299,8 @@ class Game:
         dt = 0
         while True:
             self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'money', REG_SZ, f"{self.money}")
-            self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'items', REG_SZ, f"{self.shop_sys.items}")
+            self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'items', REG_SZ,
+                                  f"{self.shop_sys.items}")
             self.money_text = self.font_arial.render(f"{self.money}$", False, (255, 255, 255))
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -282,6 +317,8 @@ class Game:
                                         and self.shop_sys.items[keys_]["cost"] < self.money:
                                     self.shop_sys.items[keys_]["bought"] = True
                                     self.money -= self.shop_sys.items[keys_]["cost"]
+                                elif i == item and self.shop_sys.items[keys_]["bought"]:
+                                    self.shop_sys.items[keys_]["on"] = not self.shop_sys.items[keys_]["on"]
 
             self.manager.update(dt / 1000.0)
             self.sc.fill(0)

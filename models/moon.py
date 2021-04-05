@@ -18,5 +18,5 @@ class Moon(pg.sprite.Sprite):
         angle = math.radians(self.angle)
         self.rect.x = self.radius * math.cos(angle) + self.pos[0]
         self.rect.y = self.radius * math.sin(angle) + self.pos[1]
-        self.angle += 2
+        self.angle += 1.5
 
