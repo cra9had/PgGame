@@ -7,6 +7,7 @@ from models.players import Player
 from models.meteor import Meteor
 from models.sun import Sun
 from models.shop import Shop, ShopButton
+from models.menu import Button
 from models.moon import Moon
 
 from particle import Emitter
@@ -21,7 +22,7 @@ class Game:
 
     def __init__(self):
         pg.init()
-        pg.mouse.set_visible(False)
+        pg.mouse.set_visible(True)
         self.sc = pg.display.set_mode((self.WIDTH, self.HEIGHT))
         self.manager = pygame_gui.UIManager((self.WIDTH, self.HEIGHT), "theme.json")
         self.clock = pg.time.Clock()
@@ -30,6 +31,8 @@ class Game:
         self.money_for_meteor = range(1, 4)
         self.sun = Sun([50, 50], [self.WIDTH // 2 - 25, self.HEIGHT // 2 - 25])
         self.shop_btn = ShopButton([0, self.HEIGHT - 50], [57, 50])
+        self.menu_play_button = Button([self.WIDTH // 2, self.HEIGHT // 2 - 100], 100, "Play")
+        self.menu_quit_button = Button([self.WIDTH // 2, self.HEIGHT // 2 + self.menu_play_button.rect.height], 100, "Quit")
         self.moon = Moon([125, 125], [self.WIDTH // 2 - 62.5, self.HEIGHT // 2 - 62.5], 250)
         self.fire_particle = self.get_fire_particle()
         self.particles = []
@@ -41,6 +44,7 @@ class Game:
         self.shop_sys.items = self.get_shop_sys_items()
 
         self.bg = pg.image.load("sprites/bg.jpeg").convert_alpha()
+        self.bg = pg.transform.scale(self.bg, [self.WIDTH, self.HEIGHT])
         self.game_over_image = pg.image.load("sprites/game_over.png").convert_alpha()
 
         self.health_bar = pygame_gui.elements.UIScreenSpaceHealthBar(relative_rect=pg.Rect(self.WIDTH - 200,
@@ -228,6 +232,7 @@ class Game:
         self.check_collides()
 
     def run(self):
+        self.main_menu()
         dt = 0
         while True:
             for event in pg.event.get():
@@ -247,6 +252,9 @@ class Game:
                         else:
                             self.game_over = False
                             self.restart_game()
+
+                    elif event.key == pg.K_ESCAPE:
+                        self.main_menu()
 
                 elif event.type == pg.KEYUP:
                     if event.key == pg.K_TAB:
@@ -271,7 +279,7 @@ class Game:
                             self.money_for_meteor = range(self.money_for_meteor[0] + 1,
                                                           self.money_for_meteor[len(self.money_for_meteor) - 1] + 2)
 
-                    for i in range(random.randint(1, 3)):
+                    for i in range(random.randint(1, 2)):
                         pos = self.get_random_pos()
                         self.meteors.add(Meteor(pos, [106, 80], 5, self.player.rect.center))
 
@@ -290,6 +298,36 @@ class Game:
 
             if not self.tab_is_pressed and not self.pause and not self.game_over:
                 self.process()
+
+            pg.display.flip()
+            dt = self.clock.tick(self.FPS)
+            pg.display.set_caption(str(self.clock.get_fps()))
+
+    def main_menu(self):
+        dt = 0
+        pg.mouse.set_visible(True)
+        while True:
+            self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'money', REG_SZ, f"{self.money}")
+            self.registry_set_key(HKEY_CURRENT_USER, r'Software\\SaveTheEarth', 'items', REG_SZ,
+                                  f"{self.shop_sys.items}")
+            self.money_text = self.font_arial.render(f"{self.money}$", False, (255, 255, 255))
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    exit()
+                elif event.type == pg.MOUSEBUTTONDOWN:
+                    if event.button == 1:
+                        if self.menu_play_button.rect.collidepoint(pg.mouse.get_pos()):
+                            pg.mouse.set_visible(False)
+                            return
+                        elif self.menu_quit_button.rect.collidepoint(pg.mouse.get_pos()):
+                            exit()
+
+            self.manager.update(dt / 1000.0)
+            self.sc.fill(0)
+
+            self.sc.blit(self.bg, [0, 0])
+            self.sc.blit(self.menu_play_button.text, [self.menu_play_button.rect.x, self.menu_play_button.rect.y])
+            self.sc.blit(self.menu_quit_button.text, [self.menu_quit_button.rect.x, self.menu_quit_button.rect.y])
 
             pg.display.flip()
             dt = self.clock.tick(self.FPS)
